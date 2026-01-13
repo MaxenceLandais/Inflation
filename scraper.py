@@ -3,81 +3,77 @@ from playwright.async_api import async_playwright
 import json
 from datetime import datetime
 import re
+import os
 
-# Ton panier avec l'URL réelle de la bouteille de lait
 PANIER = [
     {
         "nom": "Lait demi-écrémé Carrefour Classic 1L",
         "url": "https://www.carrefour.fr/p/lait-demi-ecreme-demi-ecreme-carrefour-classic-3276554163158",
-        # Sélecteur spécifique pour le prix principal chez Carrefour
-        "selector": ".pdp-price-container__price" 
+        # On essaie plusieurs sélecteurs possibles pour le prix
+        "selectors": [".pdp-price-container__price", ".ds-product-card__price", ".product-price"] 
     }
 ]
 
-async def get_price(browser, url, selector):
+async def get_price(browser, url, selectors):
     page = await browser.new_page()
-    
-    # On définit un User-Agent moderne pour éviter d'être détecté comme bot
-    await page.set_extra_http_headers({
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-    })
+    # On agrandit la fenêtre pour simuler un vrai écran
+    await page.set_viewport_size({"width": 1280, "height": 800})
     
     try:
-        # On va sur la page
-        await page.goto(url, wait_until="domcontentloaded", timeout=60000)
+        print(f"Navigation vers {url}...")
+        await page.goto(url, wait_until="networkidle", timeout=60000)
         
-        # On attend que le prix soit visible
-        await page.wait_for_selector(selector, timeout=15000)
+        # On attend un peu pour laisser passer les scripts anti-bot
+        await asyncio.sleep(5)
+
+        price_text = None
+        for selector in selectors:
+            try:
+                # On attend que l'un des sélecteurs apparaisse
+                element = await page.wait_for_selector(selector, timeout=5000)
+                if element:
+                    price_text = await element.inner_text()
+                    break
+            except:
+                continue
         
-        # On récupère le texte brut (ex: "1,05 €" ou "1€05")
-        price_text = await page.inner_text(selector)
+        if not price_text:
+            # SI CA ECHOUE : On prend une photo pour comprendre pourquoi !
+            await page.screenshot(path="error_debug.png")
+            print("Prix non trouvé. Capture d'écran 'error_debug.png' enregistrée.")
+            return None
         
-        # Nettoyage avec Regex pour extraire le nombre
-        # Remplace la virgule par un point et garde uniquement chiffres et points
         price_clean = price_text.replace(',', '.')
         price_match = re.search(r"(\d+\.\d+|\d+)", price_clean)
-        
-        if price_match:
-            return float(price_match.group(1))
-        return None
+        return float(price_match.group(1)) if price_match else None
         
     except Exception as e:
-        print(f"Erreur sur {url}: {e}")
+        print(f"Erreur : {e}")
+        await page.screenshot(path="error_critical.png")
         return None
     finally:
         await page.close()
 
 async def main():
     async with async_playwright() as p:
-        # Lancement du navigateur
         browser = await p.chromium.launch(headless=True)
-        
-        timestamp = datetime.now().isoformat()
-        daily_results = {
-            "date": timestamp,
-            "produits": []
-        }
+        results = {"date": datetime.now().isoformat(), "produits": []}
 
         for produit in PANIER:
-            print(f"Récupération du prix : {produit['nom']}...")
-            prix = await get_price(browser, produit['url'], produit['selector'])
-            
+            prix = await get_price(browser, produit['url'], produit['selectors'])
             if prix:
-                print(f"Prix trouvé : {prix} €")
-                daily_results["produits"].append({
-                    "nom": produit['nom'],
-                    "prix": prix
-                })
-            else:
-                print(f"Échec de la récupération pour {produit['nom']}")
+                print(f"Succès : {prix} €")
+                results["produits"].append({"nom": produit['nom'], "prix": prix})
 
         await browser.close()
 
-        # On ajoute le résultat au fichier historique
-        if daily_results["produits"]:
+        if results["produits"]:
             with open('prices_history.json', 'a', encoding='utf-8') as f:
-                f.write(json.dumps(daily_results, ensure_ascii=False) + "\n")
-            print("Fichier history.json mis à jour.")
+                f.write(json.dumps(results, ensure_ascii=False) + "\n")
+        else:
+            # On crée un fichier vide ou on touche le fichier pour éviter l'erreur Git
+            if not os.path.exists('prices_history.json'):
+                open('prices_history.json', 'a').close()
 
 if __name__ == "__main__":
     asyncio.run(main())
