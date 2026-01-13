@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <title>Inflation Live Tracker</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body { font-family: sans-serif; max-width: 800px; margin: auto; padding: 20px; background: #f4f7f6; }
+        .card { background: white; padding: 20px; border-radius: 10px; shadow: 0 2px 5px rgba(0,0,0,0.1); }
+        h1 { color: #2c3e50; text-align: center; }
+    </style>
+</head>
+<body>
+    <h1>📊 Inflation Live (Alternative Insee)</h1>
+    <div class="card">
+        <canvas id="inflationChart"></canvas>
+    </div>
+
+    <script>
+        async function loadData() {
+            // On charge le fichier JSON généré par ton bot
+            const response = await fetch('prices_history.json');
+            const text = await response.text();
+            
+            // On transforme le format "ligne par ligne" en un tableau d'objets
+            const lines = text.trim().split('\n');
+            const data = lines.map(line => JSON.parse(line));
+
+            const dates = data.map(d => d.date.split('T')[0]);
+            const laitPrices = data.map(d => d.produits.find(p => p.nom.includes('Lait')).prix);
+            const essencePrices = data.map(d => d.produits.find(p => p.nom.includes('Essence')).prix);
+
+            const ctx = document.getElementById('inflationChart').getContext('2d');
+            new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: dates,
+                    datasets: [
+                        { label: 'Prix Lait (1L)', data: laitPrices, borderColor: 'blue', fill: false },
+                        { label: 'Prix Essence SP95 (L)', data: essencePrices, borderColor: 'orange', fill: false }
+                    ]
+                }
+            });
+        }
+        loadData();
+    </script>
+</body>
+</html>
