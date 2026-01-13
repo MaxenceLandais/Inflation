@@ -2,43 +2,62 @@
 <html lang="fr">
 <head>
     <meta charset="UTF-8">
-    <title>Inflation Live Tracker</title>
+    <title>Inflation Live - Indice 100</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
-        body { font-family: sans-serif; max-width: 800px; margin: auto; padding: 20px; background: #f4f7f6; }
-        .card { background: white; padding: 20px; border-radius: 10px; shadow: 0 2px 5px rgba(0,0,0,0.1); }
-        h1 { color: #2c3e50; text-align: center; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 900px; margin: auto; padding: 40px; background: #f0f2f5; }
+        .card { background: white; padding: 30px; border-radius: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); }
+        h1 { color: #1a2a6c; text-align: center; margin-bottom: 10px; }
+        p.subtitle { text-align: center; color: #666; margin-bottom: 30px; }
     </style>
 </head>
 <body>
-    <h1>📊 Inflation Live (Alternative Insee)</h1>
+    <h1>📈 Mon Indice de l'Inflation</h1>
+    <p class="subtitle">Base 100 fixée au premier relevé (Calcul en temps réel)</p>
+    
     <div class="card">
         <canvas id="inflationChart"></canvas>
     </div>
 
     <script>
         async function loadData() {
-            // On charge le fichier JSON généré par ton bot
             const response = await fetch('prices_history.json');
             const text = await response.text();
-            
-            // On transforme le format "ligne par ligne" en un tableau d'objets
-            const lines = text.trim().split('\n');
-            const data = lines.map(line => JSON.parse(line));
+            const data = text.trim().split('\n').map(line => JSON.parse(line));
 
-            const dates = data.map(d => d.date.split('T')[0]);
-            const laitPrices = data.map(d => d.produits.find(p => p.nom.includes('Lait')).prix);
-            const essencePrices = data.map(d => d.produits.find(p => p.nom.includes('Essence')).prix);
+            const dates = data.map(d => new Date(d.date).toLocaleDateString('fr-FR'));
+            
+            // Calcul de la somme du panier pour chaque jour
+            const dailyTotals = data.map(day => {
+                return day.produits.reduce((sum, prod) => sum + prod.prix, 0);
+            });
+
+            // Transformation en Base 100
+            const firstTotal = dailyTotals[0];
+            const base100Data = dailyTotals.map(total => (total / firstTotal) * 100);
 
             const ctx = document.getElementById('inflationChart').getContext('2d');
             new Chart(ctx, {
                 type: 'line',
                 data: {
                     labels: dates,
-                    datasets: [
-                        { label: 'Prix Lait (1L)', data: laitPrices, borderColor: 'blue', fill: false },
-                        { label: 'Prix Essence SP95 (L)', data: essencePrices, borderColor: 'orange', fill: false }
-                    ]
+                    datasets: [{
+                        label: 'Indice des prix (Base 100)',
+                        data: base100Data,
+                        borderColor: '#1a2a6c',
+                        backgroundColor: 'rgba(26, 42, 108, 0.1)',
+                        fill: true,
+                        tension: 0.3,
+                        borderWidth: 3
+                    }]
+                },
+                options: {
+                    plugins: {
+                        legend: { display: true }
+                    },
+                    scales: {
+                        y: { min: 95, max: 105 } // Zoom sur les variations
+                    }
                 }
             });
         }
