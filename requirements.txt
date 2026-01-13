@@ -1,0 +1,4 @@
+playwright==1.49.1
+asyncio
+# Optionnel mais recommandé pour l'analyse de données plus tard
+pandas
