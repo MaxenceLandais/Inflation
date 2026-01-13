@@ -1,25 +1,52 @@
 name: Update Inflation Data
+
 on:
   schedule:
-    - cron: '0 8 * * *' # Tous les jours à 8h00
+    # S'exécute tous les jours à 08h00 UTC
+    - cron: '0 8 * * *'
+  workflow_dispatch:
+    # Permet de lancer le script manuellement depuis l'onglet "Actions" de GitHub
+
 jobs:
-  build:
+  scrape_and_commit:
     runs-on: ubuntu-latest
+
     steps:
-      - uses: actions/checkout@v2
+      # 1. Récupère le code du dépôt
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # 2. Installe Python
       - name: Set up Python
-        uses: actions/setup-python@v2
+        uses: actions/setup-python@v5
         with:
-          python-version: '3.9'
+          python-version: '3.10'
+          cache: 'pip' # Optimise la vitesse en cachant les dépendances
+
+      # 3. Installe les dépendances via ton requirements.txt
       - name: Install dependencies
         run: |
-          pip install playwright
-          playwright install chromium
-      - name: Run Scraper
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      # 4. Installe le navigateur pour Playwright (seulement Chromium pour gagner du temps)
+      - name: Install Playwright Browser
+        run: playwright install chromium --with-deps
+
+      # 5. Exécute le script de calcul/scraping
+      - name: Run Inflation Scraper
         run: python scraper.py
-      - name: Commit and Push
+
+      # 6. Sauvegarde les résultats (JSON/CSV) dans le dépôt Git
+      - name: Commit and Push changes
         run: |
-          git config --global user.name 'InflationBot'
+          git config --global user.name "Inflation-Bot"
+          git config --global user.email "bot@github.com"
           git add prices_history.json
-          git commit -m "Update prices"
-          git push
+          # On vérifie s'il y a des changements avant de commit pour éviter une erreur
+          if git diff --quiet && git diff --staged --quiet; then
+            echo "Aucun changement détecté."
+          else
+            git commit -m "MAJ Données Inflation : $(date +'%d/%m/%Y')"
+            git push
+          fi
