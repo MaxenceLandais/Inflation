@@ -1,0 +1,25 @@
+name: Update Inflation Data
+on:
+  schedule:
+    - cron: '0 8 * * *' # Tous les jours à 8h00
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - name: Set up Python
+        uses: actions/setup-python@v2
+        with:
+          python-version: '3.9'
+      - name: Install dependencies
+        run: |
+          pip install playwright
+          playwright install chromium
+      - name: Run Scraper
+        run: python scraper.py
+      - name: Commit and Push
+        run: |
+          git config --global user.name 'InflationBot'
+          git add prices_history.json
+          git commit -m "Update prices"
+          git push
