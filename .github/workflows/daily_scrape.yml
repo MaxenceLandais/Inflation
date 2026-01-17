@@ -1,8 +1,9 @@
 name: Update Prices
+
 on:
   schedule:
-    - cron: '0 8 * * *' # Tous les jours à 8h
-  workflow_dispatch:
+    - cron: '0 8 * * *' # S'exécute tous les jours à 8h
+  workflow_dispatch: # Permet de lancer le script manuellement pour tester
 
 jobs:
   scrape:
@@ -16,23 +17,43 @@ jobs:
         with:
           python-version: '3.10'
 
-      # --- ÉTAPE VPN : Activation de Cloudflare WARP ---
-      - name: Install & Connect WARP (VPN)
+      # 1. Installation de Cloudflare WARP (VPN gratuit et efficace)
+      - name: Setup Cloudflare WARP (VPN)
         uses: fscarmen/warp-on-actions@v1.1
         with:
-          stack: dual # Change l'IP en IPv4 et IPv6
+          stack: dual # Active l'IP différente en IPv4 et IPv6
 
+      # 2. Vérification de l'IP (pour être sûr que le VPN a fonctionné)
+      - name: Check IP Address
+        run: |
+          echo "Mon IP actuelle est :"
+          curl -s https://ifconfig.me
+          echo ""
+
+      # 3. Installation des dépendances
       - name: Install dependencies
         run: |
           pip install playwright requests
           playwright install chromium
 
+      # 4. Exécution du scraper
       - name: Run scraper
         run: python scraper.py
 
+      # 5. Récupération des captures d'écran en cas d'erreur (Debug)
+      - name: Upload Debug Screenshots
+        if: always() # S'exécute même si le script a planté
+        uses: actions/upload-artifact@v4
+        with:
+          name: screenshots-debug
+          path: "*.png"
+          retention-days: 5
+
+      # 6. Sauvegarde des données dans le dépôt Git (si le script a réussi)
       - name: Commit and push changes
+        if: success()
         run: |
-          git config --global user.name "Price Bot"
+          git config --global user.name "InflationBot"
           git config --global user.email "bot@example.com"
           git add prices_history.json
           git commit -m "Update prices (via VPN)" || exit 0
