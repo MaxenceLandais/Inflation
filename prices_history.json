@@ -6,3 +6,4 @@
 {"date": "2026-01-17T11:09:50.642333", "produits": [{"nom": "Essence SP95 (Litre)", "prix": 1.82}]}
 {"date": "2026-01-17T11:13:14.621744", "produits": [{"nom": "Essence SP95 (Litre)", "prix": 1.82}]}
 {"date": "2026-01-17T11:38:27.989653", "produits": [{"nom": "Lait Carrefour 1L", "prix": 1.08}]}
+{"date": "2026-01-17T11:52:28.509911", "releves": [{"enseigne": "Carrefour", "prix": 1.08}, {"enseigne": "Leclerc", "prix": 1.12}]}
