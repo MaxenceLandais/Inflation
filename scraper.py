@@ -1,60 +1,70 @@
-import requests
+import asyncio
+from playwright.async_api import async_playwright
 import json
 from datetime import datetime
+import re
 
-def get_live_gas_price():
-    """Récupère le prix moyen national réel. Retourne None si échec."""
-    url = "https://data.economie.gouv.fr/api/explore/v2.1/catalog/datasets/prix-des-carburants-en-france-flux-temps-reel/records?limit=20"
-    try:
-        response = requests.get(url, timeout=15)
-        data = response.json()
-        # On extrait uniquement les prix valides pour le SP95-E10
-        prices = [r['prix_valeur'] for r in data.get('results', []) if r.get('prix_nom') == "SP95-E10" and r.get('prix_valeur')]
+async def get_carrefour_milk_price():
+    url = "https://www.carrefour.fr/p/lait-demi-ecreme-demi-ecreme-carrefour-classic-3276554163158"
+    
+    async with async_playwright() as p:
+        # Lancement du navigateur avec un User-Agent crédible
+        browser = await p.chromium.launch(headless=True)
+        context = await browser.new_context(
+            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36"
+        )
+        page = await context.new_page()
         
-        if prices:
-            return round(sum(prices) / len(prices), 3)
-    except:
-        pass
+        try:
+            print(f"Accès à Carrefour : {url}")
+            # On attend que la page soit chargée
+            await page.goto(url, wait_until="domcontentloaded", timeout=60000)
+            
+            # On attend que le prix soit présent dans le DOM (plusieurs sélecteurs possibles)
+            # Carrefour change souvent ses classes CSS
+            selectors = [".pdp-price-container", ".ds-product-card__price", ".product-price"]
+            
+            price_text = None
+            for selector in selectors:
+                try:
+                    element = await page.wait_for_selector(selector, timeout=10000)
+                    if element:
+                        price_text = await element.inner_text()
+                        break
+                except:
+                    continue
+            
+            if not price_text:
+                return None
+
+            # Nettoyage : "1,05 €" -> 1.05
+            price_clean = price_text.replace(',', '.')
+            match = re.search(r"(\d+\.\d+|\d+)", price_clean)
+            
+            if match:
+                return float(match.group(1))
+            
+        except Exception as e:
+            print(f"Erreur Scraping : {e}")
+        finally:
+            await browser.close()
     return None
 
-def get_live_food_price(ean):
-    """Récupère le prix réel sur Open Food Facts. Retourne None si absent."""
-    url = f"https://world.openfoodfacts.org/api/v2/product/{ean}?fields=price"
-    try:
-        response = requests.get(url, timeout=10)
-        data = response.json()
-        price = data.get('product', {}).get('price')
-        if price:
-            return float(price)
-    except:
-        pass
-    return None
-
-def main():
-    timestamp = datetime.now().isoformat()
-    produits_presents = []
-
-    # Test du Lait
-    prix_lait = get_live_food_price("3276554163158")
+async def main():
+    prix_lait = await get_carrefour_milk_price()
+    
     if prix_lait:
-        produits_presents.append({"nom": "Lait Carrefour 1L", "prix": prix_lait})
-
-    # Test de l'Essence
-    prix_essence = get_live_gas_price()
-    if prix_essence:
-        produits_presents.append({"nom": "Essence SP95 (Litre)", "prix": prix_essence})
-
-    # On n'enregistre que si on a au moins un produit avec un prix réel
-    if produits_presents:
+        timestamp = datetime.now().isoformat()
         data = {
             "date": timestamp,
-            "produits": produits_presents
+            "produits": [{"nom": "Lait Carrefour 1L", "prix": prix_lait}]
         }
+        
         with open('prices_history.json', 'a', encoding='utf-8') as f:
             f.write(json.dumps(data, ensure_ascii=False) + "\n")
-        print(f"Succès : {len(produits_presents)} produits mis à jour.")
+        print(f"✅ Prix du lait enregistré : {prix_lait} €")
     else:
-        print("Erreur : Aucun prix n'a pu être récupéré en direct. Aucune donnée enregistrée.")
+        print("❌ Impossible de récupérer le prix. Carrefour a peut-être bloqué la requête.")
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())
