@@ -21,49 +21,44 @@ async def scrape_milk_site(browser, site):
     
     try:
         print(f"🔍 Scan {site['nom']}...")
-        await page.goto(site['url'], wait_until="networkidle", timeout=60000)
+        await page.goto(site['url'], wait_until="domcontentloaded", timeout=60000)
         
-        # Technique 1 : Chercher dans les balises Meta (Auchan adore ça)
-        if not prix:
-            meta_price = await page.get_attribute("meta[property='product:price:amount']", "content")
-            if meta_price:
-                prix = float(meta_price.replace(',', '.'))
+        # On attend que la page soit vraiment prête
+        await page.wait_for_timeout(7000) 
 
-        # Technique 2 : Chercher dans le JSON-LD (Intermarché/Leclerc)
-        if not prix:
-            scripts = await page.locator('script[type="application/ld+json"]').all()
-            for script in scripts:
-                content = await script.inner_text()
-                if '"price":' in content:
-                    match = re.search(r'"price":\s*"([\d.]+)"', content)
-                    if match:
-                        prix = float(match.group(1))
-                        break
-
-        # Technique 3 : La méthode RegEx (ton sauveur pour Carrefour)
-        if not prix:
-            await page.wait_for_timeout(3000)
+        # Tentative de récupération du prix (on boucle pour éviter le 0.0)
+        for attempt in range(3):
+            # On cherche tous les éléments qui contiennent un symbole €
             elements = await page.get_by_text(re.compile(r"\d+[,.]\d+\s?€")).all()
+            
             for el in elements:
                 text = await el.inner_text()
                 match = re.search(r"(\d+)[.,](\d+)", text)
                 if match:
-                    val = float(f"{match.group(1)}.{match.group(2)}")
-                    if val > 0.5: # Éviter les promos ou centimes
-                        prix = val
+                    valeur = float(f"{match.group(1)}.{match.group(2)}")
+                    if valeur > 0.10: # On ignore les prix ridicules ou à 0
+                        prix = valeur
                         break
+            
+            if prix: break
+            await page.wait_for_timeout(2000) # On attend un peu si on n'a rien trouvé
 
         if prix:
             print(f"✅ {site['nom']} : {prix} €")
+        else:
+            print(f"❌ Prix non trouvé ou invalide pour {site['nom']}")
+            
     except Exception as e:
-        print(f"⚠️ Erreur technique {site['nom']}")
+        print(f"⚠️ Erreur technique sur {site['nom']}")
     finally:
         await context.close()
+    
     return prix
 
 async def main():
     timestamp = datetime.now().isoformat()
     resultats = []
+
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True)
         for site in SITES_LAIT:
@@ -73,9 +68,13 @@ async def main():
         await browser.close()
 
     if resultats:
+        data_to_save = {"date": timestamp, "releves": resultats}
         with open('prices_history.json', 'a', encoding='utf-8') as f:
-            f.write(json.dumps({"date": timestamp, "releves": resultats}, ensure_ascii=False) + "\n")
+            f.write(json.dumps(data_to_save, ensure_ascii=False) + "\n")
         print(f"💾 Sauvegarde effectuée ({len(resultats)} prix).")
+    else:
+        print("🔴 Échec total.")
+        exit(1)
 
 if __name__ == "__main__":
     asyncio.run(main())
